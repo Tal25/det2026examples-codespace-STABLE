@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Haar Cascade Face Detection</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 { font-size: 1.2rem; margin-bottom: 8px; }
+    #status { color: #aaa; margin-bottom: 12px; font-size: 0.9rem; }
+    #container { position: relative; }
+    video { display: none; }
+    canvas { border: 1px solid #444; }
+  </style>
+</head>
+<body>
+  <h1>OpenCV.js — Haar Cascade Face Detection</h1>
+  <div id="status">Loading OpenCV.js...</div>
+
+  <div id="container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- OpenCV.js (hosted locally) -->
+  <script async src="opencv.js"
+          onload="onOpenCvReady()" onerror="status('Failed to load OpenCV.js')">
+  </script>
+
+  <script>
+    const video  = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+
+    function status(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    // Called once OpenCV.js has fully initialised
+    function onOpenCvReady() {
+      cv['onRuntimeInitialized'] = () => {
+        status('OpenCV ready — requesting camera...');
+        startCamera();
+      };
+    }
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          canvas.width  = video.videoWidth;
+          canvas.height = video.videoHeight;
+          loadClassifierAndDetect();
+        };
+      } catch (e) {
+        status('Camera error: ' + e.message);
+      }
+    }
+
+    function loadClassifierAndDetect() {
+      // Fetch the Haar cascade XML and pass it to OpenCV via its virtual FS
+      const CLASSIFIER_URL = 'haarcascade_frontalface_default.xml';
+
+      fetch(CLASSIFIER_URL)
+        .then(r => r.arrayBuffer())
+        .then(buf => {
+          // Write the XML into OpenCV's in-memory filesystem
+          cv.FS_createDataFile('/', 'face.xml', new Uint8Array(buf), true, false, false);
+
+          const classifier = new cv.CascadeClassifier();
+          if (!classifier.load('face.xml')) {
+            status('Failed to load classifier XML');
+            return;
+          }
+          status('Detecting faces...');
+          detect(classifier);
+        })
+        .catch(e => status('Failed to fetch cascade: ' + e.message));
+    }
+
+    function detect(classifier) {
+      const src   = new cv.Mat(canvas.height, canvas.width, cv.CV_8UC4);
+      const gray  = new cv.Mat();
+      const faces = new cv.RectVector();
+      const msize = new cv.Size(0, 0);
+
+      function processFrame() {
+        // Draw the current video frame onto the canvas, then read its pixels
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        src.data.set(imageData.data);
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.equalizeHist(gray, gray);
+
+        classifier.detectMultiScale(gray, faces, 1.1, 4, 0, msize, msize);
+
+        // Draw bounding boxes
+        for (let i = 0; i < faces.size(); i++) {
+          const f = faces.get(i);
+          ctx.strokeStyle = '#00ff88';
+          ctx.lineWidth   = 2;
+          ctx.strokeRect(f.x, f.y, f.width, f.height);
+        }
+
+        requestAnimationFrame(processFrame);
+      }
+
+      requestAnimationFrame(processFrame);
+    }
+  </script>
+</body>
+</html>

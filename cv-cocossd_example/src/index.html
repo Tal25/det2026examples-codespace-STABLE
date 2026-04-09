@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>COCO-SSD Object Detection</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 { font-size: 1.2rem; margin-bottom: 8px; }
+    #status { color: #aaa; margin-bottom: 12px; font-size: 0.9rem; }
+    #enable-btn {
+      padding: 8px 20px;
+      font-family: monospace;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-bottom: 12px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #fff;
+    }
+    #enable-btn:disabled { opacity: 0.4; cursor: default; }
+    #container { position: relative; display: inline-block; }
+    video { display: block; }
+    .label {
+      position: absolute;
+      background: rgba(0, 255, 136, 0.85);
+      color: #000;
+      font-size: 0.75rem;
+      font-family: monospace;
+      padding: 2px 5px;
+      pointer-events: none;
+    }
+    .box {
+      position: absolute;
+      border: 2px solid #00ff88;
+      pointer-events: none;
+      box-sizing: border-box;
+    }
+    a, a:visited {
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <h1>TensorFlow.js — COCO-SSD Object Detection</h1>
+  <div id="status">Loading model...</div>
+  <button id="enable-btn" disabled>Enable Webcam</button>
+
+  <div id="container">
+    <video id="video" autoplay playsinline width="640" height="480"></video>
+    <!-- detection boxes injected here -->
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+
+  <script>
+    const video     = document.getElementById('video');
+    const container = document.getElementById('container');
+    const btn       = document.getElementById('enable-btn');
+    const statusEl  = document.getElementById('status');
+
+    const CONFIDENCE_THRESHOLD = 0.66;
+    let model = null;
+
+    function status(msg) { statusEl.textContent = msg; }
+
+    // Load COCO-SSD model on page load
+    cocoSsd.load().then(m => {
+      model = m;
+      status('Model ready — click Enable Webcam');
+      btn.disabled = false;
+    }).catch(e => status('Model load failed: ' + e.message));
+
+    // Request webcam access
+    btn.addEventListener('click', async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        return status('getUserMedia not supported in this browser');
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        video.addEventListener('loadeddata', () => {
+          btn.style.display = 'none';
+          status('Detecting...');
+          detectLoop();
+        });
+      } catch (e) {
+        status('Camera error: ' + e.message);
+      }
+    });
+
+    // Remove old overlays
+    function clearBoxes() {
+      container.querySelectorAll('.box, .label').forEach(el => el.remove());
+    }
+
+    // Main detection loop
+    async function detectLoop() {
+      const predictions = await model.detect(video);
+      clearBoxes();
+
+      for (const p of predictions) {
+        if (p.score < CONFIDENCE_THRESHOLD) continue;
+
+        const [x, y, w, h] = p.bbox;
+
+        const box = document.createElement('div');
+        box.className = 'box';
+        box.style.left   = x + 'px';
+        box.style.top    = y + 'px';
+        box.style.width  = w + 'px';
+        box.style.height = h + 'px';
+
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.style.left = x + 'px';
+        label.style.top  = Math.max(0, y - 20) + 'px';
+        label.textContent = `${p.class} ${Math.round(p.score * 100)}%`;
+
+        container.appendChild(box);
+        container.appendChild(label);
+      }
+
+      requestAnimationFrame(detectLoop);
+    }
+  </script>
+  <div>
+    Based on the example by Jason Mayes<br /><a href="https://codelabs.developers.google.com/codelabs/tensorflowjs-object-detection#0" target="_blank">https://codelabs.developers.google.com/codelabs/tensorflowjs-object-detection#0</a>
+  </div>
+</body>
+</html>

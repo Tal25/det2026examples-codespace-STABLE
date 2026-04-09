@@ -1,0 +1,5 @@
+{
+  "name": "Gemini 3 Flash Object Detection",
+  "description": "Real-time object detection using Gemini 3 Flash and webcam feed.",
+  "requestFramePermissions": ["camera"]
+}
